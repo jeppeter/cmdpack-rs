@@ -55,7 +55,7 @@ fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,
 		inputs = fileop::read_file(&infile)?;
 	}
 
-	let cmd :CmdExec = CmdExec::new(&sarr)?;
+	let mut cmd :CmdExec = CmdExec::new(&sarr)?;
 	let (outs,errs,exitcode) = cmd.run(&inputs)?;
 	debug_trace!("run {:?} exitcode[{}]",sarr,exitcode);
 	debug_trace!("outs\n{}",outs);
