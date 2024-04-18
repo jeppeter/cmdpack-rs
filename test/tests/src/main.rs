@@ -29,8 +29,11 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 use cmdpack::*;
+use extlog::*;
+use extlog::loglib::*;
 
 mod logtrans;
+#[allow(dead_code)]
 mod strop;
 mod fileop;
 
@@ -38,16 +41,22 @@ extargs_error_class!{CmdPackError}
 
 
 fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,_ctx :Option<Arc<RefCell<dyn Any>>>) -> Result<(),Box<dyn Error>> {	
-	let sarr :Vec<String>  = ns.get_array("subnargs");
+	let sarr :Vec<String> ;
+	let mut inputs :String = "".to_string();
+	let infile :String;
 
-	init_log(ns.clone())?;
+	logtrans::init_log(ns.clone())?;
 	sarr = ns.get_array("subnargs");
 	if sarr.len() < 1 {
 		extargs_new_error!{CmdPackError,"need args"}
 	}
+	infile = ns.get_string("input");
+	if infile.len() > 0 {
+		inputs = fileop::read_file(&infile)?;
+	}
 
 	let cmd :CmdExec = CmdExec::new(&sarr)?;
-	let (outs,errs,exitcode) = cmd.run()?;
+	let (outs,errs,exitcode) = cmd.run(&inputs)?;
 	debug_trace!("run {:?} exitcode[{}]",sarr,exitcode);
 	debug_trace!("outs\n{}",outs);
 	debug_trace!("errs\n{}",errs);
