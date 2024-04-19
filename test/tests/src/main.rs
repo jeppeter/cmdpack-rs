@@ -40,7 +40,7 @@ mod fileop;
 extargs_error_class!{CmdPackError}
 
 
-fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,_ctx :Option<Arc<RefCell<dyn Any>>>) -> Result<(),Box<dyn Error>> {	
+fn runb_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,_ctx :Option<Arc<RefCell<dyn Any>>>) -> Result<(),Box<dyn Error>> {	
 	let sarr :Vec<String> ;
 	let mut inputs :Vec<u8> = Vec::new();
 	let infile :String;
@@ -64,14 +64,41 @@ fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,
 	Ok(())
 }
 
+fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,_ctx :Option<Arc<RefCell<dyn Any>>>) -> Result<(),Box<dyn Error>> {	
+	let sarr :Vec<String> ;
+	let mut inputs :String = "".to_string();
+	let infile :String;
 
-#[extargs_map_function(run_handler)]
+	logtrans::init_log(ns.clone())?;
+	sarr = ns.get_array("subnargs");
+	if sarr.len() < 1 {
+		extargs_new_error!{CmdPackError,"need args"}
+	}
+	infile = ns.get_string("input");
+	if infile.len() > 0 {
+		inputs = fileop::read_file(&infile)?;
+	}
+
+	let mut cmd :CmdExec = CmdExec::new(&sarr)?;
+	let (outs,errs,exitcode) = cmd.run(&inputs)?;
+	debug_trace!("run {:?} exitcode[{}]",sarr,exitcode);
+	debug_trace!("outs\n{}",outs);
+	debug_trace!("errs\n{}",errs);
+
+	Ok(())
+}
+
+
+#[extargs_map_function(runb_handler,run_handler)]
 fn main() -> Result<(),Box<dyn Error>> {
 	let parser :ExtArgsParser = ExtArgsParser::new(None,None)?;
 	let commandline = r#"
 	{
 		"output|o" : null,
 		"input|i" : null,
+		"runb<runb_handler>##args ... to run command##" : {
+			"$" : "+"
+		},
 		"run<run_handler>##args ... to run command##" : {
 			"$" : "+"
 		}

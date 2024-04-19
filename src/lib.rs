@@ -150,6 +150,26 @@ impl CmdExecInner {
 	    Ok((output.stdout.clone(),output.stderr.clone(),exitcode))
 	}
 
+	pub (crate) fn run(&mut self,inputs :&str) -> Result<(String,String,i32),Box<dyn Error>> {
+		let (outb,errb,exitcode) = self.run_bytes(inputs.as_bytes())?;
+		let mut outs :String = "".to_string();
+		let mut errs :String = "".to_string();
+		if outb.len() > 0 {
+			let ores = std::str::from_utf8(&outb);
+			if ores.is_err() {
+				cmdpack_new_error!{CmdPackError,"can not transfer outb {:?}",ores.err().unwrap()}
+			}
+			outs = ores.unwrap().to_string();
+		}
+		if errb.len() > 0 {
+			let ores = std::str::from_utf8(&errb);
+			if ores.is_err() {
+				cmdpack_new_error!{CmdPackError,"can not transfer errb {:?}",ores.err().unwrap()}
+			}
+			errs = ores.unwrap().to_string();
+		}
+		Ok((outs,errs,exitcode))
+	}
 
 }
 
@@ -185,5 +205,8 @@ impl CmdExec {
 
 	pub fn run_bytes(&mut self,inputs :&[u8]) -> Result<(Vec<u8>,Vec<u8>,i32),Box<dyn Error>> {
 		return self.inner.borrow_mut().run_bytes(inputs);
+	}
+	pub fn run(&mut self,inputs :&str) -> Result<(String,String,i32),Box<dyn Error>> {
+		return self.inner.borrow_mut().run(inputs);
 	}
 }
