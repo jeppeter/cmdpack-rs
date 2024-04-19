@@ -103,7 +103,13 @@ impl CmdExecInner {
 		cmd.stderr(Stdio::piped());
 		self.chld.push(cmd.spawn()?);
 		if inputb.len() > 0 {
-			debug_buffer_trace!(inputb.as_ptr(),inputb.len(),"write out buffer");
+			if inputb.len() > 512 {
+				debug_buffer_trace!(inputb.as_ptr(),512,"write out buffer top [512]");
+				debug_buffer_trace!(inputb[(inputb.len()-512)..].as_ptr(),512,"write out buffer end [512]");
+			} else {
+				debug_buffer_trace!(inputb.as_ptr(),inputb.len(),"write out buffer");	
+			}
+			
 			let cb :Vec<u8> = inputb.to_vec();
 			let mut stdin = self.chld[0].stdin.take().unwrap();
 			self.thropt.push(std::thread::spawn(move || {
@@ -113,14 +119,17 @@ impl CmdExecInner {
 					if writed >= cb.len() {
 						break;
 					}
+					debug_trace!("writed {}:0x{:x}",writed,writed);
 
 					let ores = stdin.write(&cb[writed..]);
 					if ores.is_err() {
 						break;
 					}
 					cursize = ores.unwrap();
+					debug_trace!("write {}:0x{:x} size",cursize,cursize);
 					writed += cursize;
 				}
+				drop(stdin);
 			}));
 
 			//stdin.write_all(inputs.as_bytes());

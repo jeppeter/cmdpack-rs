@@ -42,7 +42,7 @@ extargs_error_class!{CmdPackError}
 
 fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,_ctx :Option<Arc<RefCell<dyn Any>>>) -> Result<(),Box<dyn Error>> {	
 	let sarr :Vec<String> ;
-	let mut inputs :String = "".to_string();
+	let mut inputs :Vec<u8> = Vec::new();
 	let infile :String;
 
 	logtrans::init_log(ns.clone())?;
@@ -52,11 +52,11 @@ fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,
 	}
 	infile = ns.get_string("input");
 	if infile.len() > 0 {
-		inputs = fileop::read_file(&infile)?;
+		inputs = fileop::read_file_bytes(&infile)?;
 	}
 
 	let mut cmd :CmdExec = CmdExec::new(&sarr)?;
-	let (outb,errb,exitcode) = cmd.run_bytes(inputs.as_bytes())?;
+	let (outb,errb,exitcode) = cmd.run_bytes(&inputs)?;
 	debug_trace!("run {:?} exitcode[{}]",sarr,exitcode);
 	debug_buffer_trace!(outb.as_ptr(),outb.len(),"outb");
 	debug_buffer_trace!(errb.as_ptr(),errb.len(),"errb");

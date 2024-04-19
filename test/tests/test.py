@@ -5,6 +5,7 @@ import sys
 import os
 import logging
 import time
+import math
 
 
 def set_logging(args):
@@ -66,14 +67,31 @@ def out_handler(args,parser):
 		time.sleep(args.timeout)
 	sys.exit(0)
 
+def outb_handler(args,parser):
+	set_logging(args)
+	total = 0
+	while True:
+		bs = sys.stdin.buffer.read(args.packsize)
+		if len(bs) == 0:
+			break
+		total += len(bs)
+		sys.stdout.write('read [%d]\n'%(len(bs)))
+		if math.fabs(args.timeout) > 0.001:
+			time.sleep(args.timeout)
+	sys.stdout.write('total [%d]\n'%(total))
+	sys.exit(0)
 
 def main():
     commandline='''
     {
         "input|i" : null,
         "output|o" : null,
-        "timeout" : 0.1,
+        "timeout" : 0.0,
+        "packsize" : 65536,
         "out<out_handler>##to read stdin##" : {
+            "$" : 0
+        },
+        "outb<outb_handler>##to read stdin##" : {
             "$" : 0
         }
     }
