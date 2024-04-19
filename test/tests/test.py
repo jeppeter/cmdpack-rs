@@ -64,7 +64,8 @@ def out_handler(args,parser):
 	for l in sys.stdin:
 		l = l.rstrip('\r\n')
 		sys.stdout.write('%s\n'%(l))
-		time.sleep(args.timeout)
+		if math.fabs(args.timeout) > 0.001:
+			time.sleep(args.timeout)
 	sys.exit(0)
 
 def outb_handler(args,parser):
