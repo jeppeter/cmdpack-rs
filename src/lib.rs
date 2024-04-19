@@ -5,7 +5,7 @@ use extlog::*;
 #[allow(unused_imports)]
 use extlog::loglib::*;
 use std::process::{Command,Stdio,Child,ExitStatus};
-//use std::thread::{JoinHandle};
+use std::thread::{JoinHandle};
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::error::Error;
@@ -15,7 +15,8 @@ cmdpack_error_class!{CmdPackError}
 
 pub struct CmdExecInner {
 	cmds :Vec<String>,
-	chld : Option<Child>,
+	chld : Vec<Child>,
+	thropt :Vec<JoinHandle<()>>,
 }
 
 impl Drop for CmdExecInner {
@@ -26,8 +27,8 @@ impl Drop for CmdExecInner {
 
 impl CmdExecInner {
 	fn close(&mut self) {
-		if self.chld.is_some() {
-			let curchld = self.chld.as_mut().unwrap();
+		while self.chld.len() > 0 {
+			let mut curchld = self.chld.pop().unwrap();
 			loop {
 				let ores = curchld.try_wait();
 				if ores.is_ok() {
@@ -39,7 +40,11 @@ impl CmdExecInner {
 
 				let _ =curchld.kill();
 			}
-			self.chld = None;
+		}
+
+		while self.thropt.len() > 0 {
+			let jp = self.thropt.pop().unwrap();
+			let _ = jp.join();
 		}
 		return;
 	}
@@ -47,7 +52,8 @@ impl CmdExecInner {
 	pub (crate) fn new(cmds :&[String]) -> Result<Self,Box<dyn Error>> {
 		let mut retv :Self = Self {
 			cmds : Vec::new(),
-			chld : None,
+			chld : Vec::new(),
+			thropt : Vec::new(),
 		};
 
 		let mut idx :usize = 0;
@@ -61,7 +67,8 @@ impl CmdExecInner {
 	pub (crate) fn new_str(cmds :&[&str]) -> Result<Self,Box<dyn Error>> {
 		let mut retv :Self = Self {
 			cmds : Vec::new(),
-			chld : None,
+			chld : Vec::new(),
+			thropt : Vec::new(),
 		};
 
 		let mut idx :usize = 0;
@@ -72,9 +79,12 @@ impl CmdExecInner {
 		Ok(retv)		
 	}
 
-	pub (crate) fn run_bytes(&mut self,inputs :&str) -> Result<(Vec<u8>,Vec<u8>,i32),Box<dyn Error>> {
+	pub (crate) fn run_bytes(&mut self,inputb :&[u8]) -> Result<(Vec<u8>,Vec<u8>,i32),Box<dyn Error>> {
 		if self.cmds.len() == 0 {
 			cmdpack_new_error!{CmdPackError,"cmds.len == 0"}
+		}
+		if self.chld.len() > 0 {
+			cmdpack_new_error!{CmdPackError,"{:?} still running",self.cmds}
 		}
 		let mut cmd :Command = Command::new(&self.cmds[0]);
 		let mut idx :usize = 1;
@@ -84,52 +94,53 @@ impl CmdExecInner {
 		}
 
 
-		if inputs.len() == 0{
+		if inputb.len() == 0{
 			cmd.stdin(Stdio::null());
 		} else {
 			cmd.stdin(Stdio::piped());
 		}
 		cmd.stdout(Stdio::piped());
 		cmd.stderr(Stdio::piped());
-		self.chld = Some(cmd.spawn()?);
-		if inputs.len() > 0 {
-			let  _ = self.chld.as_mut().unwrap().stdin.as_mut().unwrap().write_all(inputs.as_bytes());
+		self.chld.push(cmd.spawn()?);
+		if inputb.len() > 0 {
+			debug_buffer_trace!(inputb.as_ptr(),inputb.len(),"write out buffer");
+			let cb :Vec<u8> = inputb.to_vec();
+			let mut stdin = self.chld[0].stdin.take().unwrap();
+			self.thropt.push(std::thread::spawn(move || {
+				let mut writed :usize = 0;
+				let mut cursize :usize;
+				loop {
+					if writed >= cb.len() {
+						break;
+					}
+
+					let ores = stdin.write(&cb[writed..]);
+					if ores.is_err() {
+						break;
+					}
+					cursize = ores.unwrap();
+					writed += cursize;
+				}
+			}));
+
 			//stdin.write_all(inputs.as_bytes());
 		}
 
 
-		let output = cmd.output()?;
-		self.chld = None;
+		let curchld = self.chld.pop().unwrap();
+		let output = curchld.wait_with_output()?;
+		let thr = self.thropt.pop().unwrap();
+		let _ = thr.join();
 	    let mut exitcode :i32 = -1;
 	    let code :Option<i32> = output.status.code();
 	    if code.is_some() {
 	    	exitcode = code.unwrap();
 	    }
-	    debug_buffer_trace!(output.stdout.as_ptr(),output.stdout.len(),"{:?} output",self.cmds);
-	    debug_buffer_trace!(output.stderr.as_ptr(),output.stderr.len(),"{:?} errout",self.cmds);
+	    //debug_buffer_trace!(output.stdout.as_ptr(),output.stdout.len(),"{:?} output",self.cmds);
+	    //debug_buffer_trace!(output.stderr.as_ptr(),output.stderr.len(),"{:?} errout",self.cmds);
 	    Ok((output.stdout.clone(),output.stderr.clone(),exitcode))
 	}
 
-	pub (crate) fn run(&mut self,inputs :&str) -> Result<(String,String,i32),Box<dyn Error>> {
-		let (outb,errb,exitcode) = self.run_bytes(inputs)?;
-		let mut outs :String = "".to_string();
-		let mut errs :String = "".to_string();
-		if outb.len() > 0 {
-			let ores = std::str::from_utf8(&outb);
-			if ores.is_err() {
-				cmdpack_new_error!{CmdPackError,"can not run {:?} output error{:?}",self.cmds,ores.err().unwrap()}
-			}
-			outs = ores.unwrap().to_string();
-		}
-		if errb.len() > 0 {
-			let ores = std::str::from_utf8(&errb);
-			if ores.is_err() {
-				cmdpack_new_error!{CmdPackError,"can not run {:?} errout error{:?}",self.cmds,ores.err().unwrap()}
-			}
-			errs = ores.unwrap().to_string();
-		}
-		Ok((outs,errs,exitcode))
-	}
 
 }
 
@@ -163,11 +174,7 @@ impl CmdExec {
 		Ok(retv)		
 	}
 
-	pub fn run_bytes(&mut self,inputs :&str) -> Result<(Vec<u8>,Vec<u8>,i32),Box<dyn Error>> {
+	pub fn run_bytes(&mut self,inputs :&[u8]) -> Result<(Vec<u8>,Vec<u8>,i32),Box<dyn Error>> {
 		return self.inner.borrow_mut().run_bytes(inputs);
 	}
-	pub fn run(&mut self,inputs :&str) -> Result<(String,String,i32),Box<dyn Error>> {
-		return self.inner.borrow_mut().run(inputs);
-	}
-
 }

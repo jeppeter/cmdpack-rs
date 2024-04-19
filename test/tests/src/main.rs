@@ -56,10 +56,10 @@ fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,
 	}
 
 	let mut cmd :CmdExec = CmdExec::new(&sarr)?;
-	let (outs,errs,exitcode) = cmd.run(&inputs)?;
+	let (outb,errb,exitcode) = cmd.run_bytes(inputs.as_bytes())?;
 	debug_trace!("run {:?} exitcode[{}]",sarr,exitcode);
-	debug_trace!("outs\n{}",outs);
-	debug_trace!("errs\n{}",errs);
+	debug_buffer_trace!(outb.as_ptr(),outb.len(),"outb");
+	debug_buffer_trace!(errb.as_ptr(),errb.len(),"errb");
 
 	Ok(())
 }
