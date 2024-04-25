@@ -14,4 +14,4 @@ repository = "https://github.com/jeppeter/cmdpack-rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-extlog = "^0.1.4"
+extlog = "^0.1.8"
