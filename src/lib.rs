@@ -138,8 +138,10 @@ impl CmdExecInner {
 
 		let curchld = self.chld.pop().unwrap();
 		let output = curchld.wait_with_output()?;
-		let thr = self.thropt.pop().unwrap();
-		let _ = thr.join();
+		if inputb.len() > 0 {
+			let thr = self.thropt.pop().unwrap();
+			let _ = thr.join();
+		}
 	    let mut exitcode :i32 = -1;
 	    let code :Option<i32> = output.status.code();
 	    if code.is_some() {
