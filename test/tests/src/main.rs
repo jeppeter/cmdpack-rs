@@ -36,6 +36,7 @@ mod logtrans;
 #[allow(dead_code)]
 mod strop;
 mod fileop;
+mod timeop;
 
 extargs_error_class!{CmdPackError}
 
@@ -88,18 +89,61 @@ fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,
 	Ok(())
 }
 
+fn runtimeout_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,_ctx :Option<Arc<RefCell<dyn Any>>>) -> Result<(),Box<dyn Error>> {	
+	let sarr :Vec<String>;
+	let timeout : i32;
+	logtrans::init_log(ns.clone())?;
 
-#[extargs_map_function(runb_handler,run_handler)]
+	sarr = ns.get_array("subnargs");
+	if sarr.len() < 1 {
+		extargs_new_error!{CmdPackError,"need at least 1 arg"}
+	}
+	timeout = ns.get_int("timeout") as i32;
+	let mut cmd :std::process::Command = std::process::Command::new(&sarr[0]);
+	let mut idx :usize = 1;
+	while idx < sarr.len() {
+		cmd.arg(&sarr[idx]);
+		idx += 1;
+	}
+	let mut chld = cmd.spawn()?;
+	let sticks = timeop::get_cur_ticks();
+	loop {
+		let val = chld.try_wait()?;
+		if val.is_some() {
+			let exitstatus = val.unwrap();
+			let code = exitstatus.code();
+			if code.is_some() {
+				debug_trace!("{:?} exitcode {}",sarr,code.unwrap());	
+			} else {
+				debug_trace!("{:?} no exitcode",sarr);
+			}			
+			break;
+		}
+		let cticks = timeop::get_cur_ticks();
+		if timeop::time_left(sticks,cticks,timeout) < 0 {
+			let _ = chld.kill();
+			continue;
+		}
+		std::thread::sleep(std::time::Duration::from_millis(100));
+	}
+	Ok(())
+}
+
+#[extargs_map_function(runb_handler,run_handler,runtimeout_handler)]
 fn main() -> Result<(),Box<dyn Error>> {
 	let parser :ExtArgsParser = ExtArgsParser::new(None,None)?;
 	let commandline = r#"
 	{
 		"output|o" : null,
 		"input|i" : null,
+		"timeout" : 10000,
 		"runb<runb_handler>##args ... to run command##" : {
 			"$" : "+"
 		},
 		"run<run_handler>##args ... to run command##" : {
+			"$" : "+"
+		},
+		"runtimeout<runtimeout_handler>####" : {
 			"$" : "+"
 		}
 	}
