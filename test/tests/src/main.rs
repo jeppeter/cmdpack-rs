@@ -37,6 +37,7 @@ mod logtrans;
 mod strop;
 mod fileop;
 mod timeop;
+mod proccmd;
 
 extargs_error_class!{CmdPackError}
 
@@ -89,6 +90,8 @@ fn run_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,
 	Ok(())
 }
 
+
+
 fn runtimeout_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetImpl>>>,_ctx :Option<Arc<RefCell<dyn Any>>>) -> Result<(),Box<dyn Error>> {	
 	let sarr :Vec<String>;
 	let timeout : i32;
@@ -99,33 +102,22 @@ fn runtimeout_handler(ns :NameSpaceEx,_optargset :Option<Arc<RefCell<dyn ArgSetI
 		extargs_new_error!{CmdPackError,"need at least 1 arg"}
 	}
 	timeout = ns.get_int("timeout") as i32;
-	let mut cmd :std::process::Command = std::process::Command::new(&sarr[0]);
-	let mut idx :usize = 1;
-	while idx < sarr.len() {
-		cmd.arg(&sarr[idx]);
-		idx += 1;
-	}
-	let mut chld = cmd.spawn()?;
+	let mut prog = proccmd::RunningCmd::new(&sarr)?;
+	let _ = prog.start()?;
 	let sticks = timeop::get_cur_ticks();
 	loop {
-		let val = chld.try_wait()?;
-		if val.is_some() {
-			let exitstatus = val.unwrap();
-			let code = exitstatus.code();
-			if code.is_some() {
-				debug_trace!("{:?} exitcode {}",sarr,code.unwrap());	
-			} else {
-				debug_trace!("{:?} no exitcode",sarr);
-			}			
+		if !prog.is_running() {
 			break;
 		}
 		let cticks = timeop::get_cur_ticks();
 		if timeop::time_left(sticks,cticks,timeout) < 0 {
-			let _ = chld.kill();
+			debug_error!("timeout {:?}",sarr);
+			prog.kill_proc();
 			continue;
 		}
 		std::thread::sleep(std::time::Duration::from_millis(100));
 	}
+	debug_trace!("{:?} return {}",sarr,prog.exitcode());
 	Ok(())
 }
 
